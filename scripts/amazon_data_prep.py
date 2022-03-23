@@ -142,7 +142,7 @@ del docs
 
 # remove duplicates asin
 df.drop_duplicates(subset = "asin", keep = 'first', inplace=True)
-
+df.reset_index(inplace=True, drop = True)
 df.to_parquet(data_path / 'cleaned_data.gzip', compression = 'gzip')
 
 
