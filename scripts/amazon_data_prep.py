@@ -144,6 +144,10 @@ del docs
 df.drop_duplicates(subset = "asin", keep = 'first', inplace=True)
 df.reset_index(inplace=True, drop = True)
 
+# remove books which have an empty title / description now
+df = df.loc[df['clean_title'] != '']
+df = df.loc[df['clean_description'] != '']
+
 # remove categories with only 1 book in them
 cat_sum = df.iloc[:, 6:669].sum(axis = 0)
 rem_cats = cat_sum[cat_sum == 1].index.to_list()
@@ -151,7 +155,7 @@ df.drop(labels=rem_cats, axis = 1, inplace=True)
 del rem_cats
 
 # remove books that are not assigned to any category
-book_cat_sum = df.iloc[:, 6: 511].sum(axis = 1)
+book_cat_sum = df.iloc[:, 6: 509].sum(axis = 1)
 df = df.loc[(book_cat_sum > 0).index]
 
 df.reset_index(inplace=True, drop = True)
@@ -163,5 +167,3 @@ df.to_parquet(data_path / 'cleaned_data.gzip', compression = 'gzip')
 # need validation AND test set
 
 # test with some manually selected books that were published after dataset got scraped!
-
-
