@@ -2,10 +2,12 @@ import gzip
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 from scipy.sparse import dok_matrix, coo_matrix
 from tqdm import tqdm
 import torch
 from torch_geometric.data import Data
+from fastnode2vec import Graph, Node2Vec
 
 # https://stackoverflow.com/questions/29760935/how-to-get-vector-for-a-sentence-from-the-word2vec-of-tokens-in-sentence
 
@@ -28,9 +30,9 @@ def plot_coo_matrix(m):
     return ax
 
 
-def load_graph():
-    with gzip.open("data/metadata_books.json") as f:
-        products = []; copurchase_list = []; index_map = {}
+def load_graph(path):
+    with gzip.open(path / 'meta_Books.json.gz') as f:
+        products = []; co_purchase_list = []; index_map = {}
         linked_products = set()
 
         total_edges = 0
@@ -39,16 +41,16 @@ def load_graph():
         for line in f:
             entry = json.loads(line.strip())
             if entry['category'] and entry['description'] and entry['price'] and entry['title']:
-                products.append(entry['asin']); copurchase_list.append(entry['also_view'])
+                products.append(entry['asin']); co_purchase_list.append(entry['also_buy'])
                 # Fill set with products that are connected in the graph
-                if entry['also_view']:
+                if entry['also_buy']:
                     linked_products.add(entry['asin'])
-                    for p in entry['also_view']:
+                    for p in entry['also_buy']:
                         linked_products.add(p)
                 # Creating hash map of products for easy lookup
                 index_map[entry['asin']] = product_number
                 # Calculating total number of edges to create edge matrix
-                total_edges += len(entry['also_view'])
+                total_edges += len(entry['also_buy'])
                 product_number += 1
         print(len(products))
         # adjacency_matrix = dok_matrix((len(products), len(products)))
@@ -57,42 +59,41 @@ def load_graph():
         total_non_mutual = 0
         with tqdm(total=len(products)) as pbar:
             for i, prod in enumerate(products):
-                co_purchase = copurchase_list[i]
+                co_purchase = co_purchase_list[i]
                 for co_p in co_purchase:
                     if co_p in index_map:
                         co_p_index = index_map[co_p]
-                        copurchase_of_product = copurchase_list[co_p_index]
-                        if prod not in copurchase_list[co_p_index]:
-                            print("Not Mutual!!")
+                        copurchase_of_product = co_purchase_list[co_p_index]
+                        if prod not in co_purchase_list[co_p_index]:
                             total_non_mutual += 1
             pbar.update()
-        print(total_non_mutual)
-        # Remove products that are isolated in the graph
+        print("Percentage of non-mutual: {}".format(total_non_mutual/total_edges))
+
+        # Remove products that are isolated in the graph, which means there is no connections to and from that book
         indices_to_remove = []
         print("Finding indexes of isolated books.")
         with tqdm(total=len(products)) as pbar:
             for asin, index in index_map.items():
-                if not copurchase_list[index] and asin not in linked_products:
+                if asin not in linked_products:
                     indices_to_remove.append(index)
-                if not copurchase_list and asin in linked_products:
-                    print("Not mutual!")
                 pbar.update()
+
         print("Removing the isolated books from the graph.")
         with tqdm(total=len(indices_to_remove)) as pbar:
             for index in sorted(indices_to_remove, reverse=True):
                 products.pop(index)
-                copurchase_list.pop(index)
+                co_purchase_list.pop(index)
                 pbar.update()
 
-        print(len(products))
         # Connectivity matrix, which has two entries for each of the nodes connected to the edge like
         # [1, 0, 3], [2, 3, 2] denotes edges 1 to 2, 0 to 3 and 3 to 2.
         graph_connectivity = np.zeros(shape=(2, total_edges))
         edge_index = 0
 
+        # Fill the connectivity matrix with book co-purchase data
         with tqdm(total=len(products)) as pbar:
-            for j, copurchase_list in enumerate(copurchase_list):
-                for product in copurchase_list:
+            for j, co_purchase in enumerate(co_purchase_list):
+                for product in co_purchase:
                     if product in index_map:
                         graph_connectivity[0][edge_index] = j
                         graph_connectivity[1][edge_index] = index_map[product]
@@ -111,10 +112,28 @@ def load_graph():
         #
         #
         # print(adjacency_matrix.count_nonzero())
+        print(len(products))
     return graph_connectivity
 
 
+def node2vec(connectivity):
+    edges = []
+    for i in range(connectivity.shape[1]):
+        edges.append((connectivity[0][i], connectivity[1][i]))
+    edges = np.array(edges)
+
+    graph = Graph(edges,
+                  directed=False, weighted=False)
+    n2v = Node2Vec(graph, dim=10, walk_length=100, context=10, p=2.0, q=0.5, workers=14)
+    n2v.train(epochs=20)
+    print(n2v.wv)
+
+
 if __name__ == "__main__":
-    graph_matrix = torch.tensor(load_graph())
-    data = Data(edge_index=graph_matrix)
-    #torch.save(data, "data/graph_object_no_features")
+    data_path = Path(__file__).parent.parent / 'data'
+    connectivity_array = load_graph(data_path)
+    np.save("data/connectivity_array", connectivity_array)
+    graph_matrix = torch.tensor(connectivity_array)
+    node2vec(connectivity_array)
+    # data = Data(edge_index=graph_matrix)
+    # torch.save(data, "../data/graph_object_no_features")
