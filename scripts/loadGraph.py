@@ -124,7 +124,7 @@ def node2vec(connectivity):
 
     graph = Graph(edges,
                   directed=False, weighted=False)
-    n2v = Node2Vec(graph, dim=10, walk_length=100, context=10, p=2.0, q=0.5, workers=14)
+    n2v = Node2Vec(graph, dim=300, walk_length=100, context=10, p=2.0, q=0.5, workers=14)
     n2v.train(epochs=20)
     print(n2v.wv)
 

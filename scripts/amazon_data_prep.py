@@ -5,6 +5,11 @@ import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
 import regex as re
 from pathlib import Path
+import nltk
+from nltk.corpus import stopwords
+# Comment this out if already downloaded
+nltk.download("stopwords")
+
 
 # load the meta data
 data_path = Path(__file__).parent.parent / 'data'
@@ -112,7 +117,7 @@ def cleaner(document):
     doc = re.sub(r'[^a-zA-Z\.\s\-]', ' ', doc)
     
     # remove punctuation
-    doc = re.sub(r'[^\P{P}-]+', ' ', doc)
+    # doc = re.sub(r'[^\P{P}-]+', ' ', doc)
 
     # remove double spaces
     doc = re.sub(r'\s{2,}', " ", doc)
@@ -129,11 +134,20 @@ docs = [[w.lower() for w in doc.split()] for doc in df['clean_title']]
 docs = [[w for w in docs[doc] if len(w) > 1] for doc in range(len(docs))]
 df['clean_title'] = [" ".join(doc) for doc in docs]
 
+
 # clean descriptions
 # concatenate description items
 docs = [" ".join(doc) for doc in df['description']] 
 df['clean_description'] = pd.Series(docs).apply(cleaner)
 
+# Remove stopwords (word2vec doesn't want them so neither do I!)
+stop = stopwords.words('english')
+df['clean_description'] = df['clean_description'].apply(lambda x: ' '.join([word for word in x.split()
+                                                                           if word not in stop]))
+print(stop)
+print(df['clean_title'])
+df['clean_title'] = df['clean_title'].apply(lambda x: ' '.join([word for word in x.split() if word not in stop]))
+print(df['clean_title'])
 # remove single letter words
 docs = [[w.lower() for w in doc.split()] for doc in df['clean_description']]
 docs = [[w for w in docs[doc] if len(w) > 1] for doc in range(len(docs))]
