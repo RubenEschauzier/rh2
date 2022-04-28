@@ -1,5 +1,7 @@
 import gzip
 import json
+import pickle
+
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -38,23 +40,23 @@ def load_graph(path):
         total_edges = 0
         product_number = 0
         print("Reading the data file.")
-        for line in f:
+        for line in tqdm(f, total=2934949):
             entry = json.loads(line.strip())
-            if entry['category'] and entry['description'] and entry['price'] and entry['title']:
-                products.append(entry['asin']); co_purchase_list.append(entry['also_buy'])
+            # Only use if select attributes are available and the product is not a duplicate in the dataset
+            if entry['category'] and entry['description'] and entry['price'] and entry['title'] and entry['also_buy'] \
+                    and entry['asin'] not in index_map:
+                products.append(entry['asin'])
+                co_purchase_list.append(entry['also_buy'])
                 # Fill set with products that are connected in the graph
-                if entry['also_buy']:
-                    linked_products.add(entry['asin'])
-                    for p in entry['also_buy']:
-                        linked_products.add(p)
+                linked_products.add(entry['asin'])
+                for p in entry['also_buy']:
+                    linked_products.add(p)
                 # Creating hash map of products for easy lookup
                 index_map[entry['asin']] = product_number
                 # Calculating total number of edges to create edge matrix
                 total_edges += len(entry['also_buy'])
                 product_number += 1
-        print(len(products))
         # adjacency_matrix = dok_matrix((len(products), len(products)))
-
         # Check if all connections are mutual
         total_non_mutual = 0
         with tqdm(total=len(products)) as pbar:
@@ -63,27 +65,34 @@ def load_graph(path):
                 for co_p in co_purchase:
                     if co_p in index_map:
                         co_p_index = index_map[co_p]
-                        copurchase_of_product = co_purchase_list[co_p_index]
                         if prod not in co_purchase_list[co_p_index]:
                             total_non_mutual += 1
             pbar.update()
         print("Percentage of non-mutual: {}".format(total_non_mutual/total_edges))
-
         # Remove products that are isolated in the graph, which means there is no connections to and from that book
         indices_to_remove = []
-        print("Finding indexes of isolated books.")
-        with tqdm(total=len(products)) as pbar:
-            for asin, index in index_map.items():
-                if asin not in linked_products:
-                    indices_to_remove.append(index)
-                pbar.update()
+        # print("Finding indexes of isolated books.")
+        # with tqdm(total=len(products)) as pbar:
+        #     for asin, index in index_map.items():
+        #         if asin not in linked_products:
+        #             indices_to_remove.append(index)
+        #         pbar.update()
 
-        print("Removing the isolated books from the graph.")
-        with tqdm(total=len(indices_to_remove)) as pbar:
-            for index in sorted(indices_to_remove, reverse=True):
-                products.pop(index)
-                co_purchase_list.pop(index)
-                pbar.update()
+        # print("Removing {} isolated books from the graph.".format(len(indices_to_remove)))
+        # with tqdm(total=len(indices_to_remove)) as pbar:
+        #     for index in sorted(indices_to_remove, reverse=True):
+        #         products.pop(index)
+        #         co_purchase_list.pop(index)
+        #         pbar.update()
+        #
+        # index_map_new = {key: val for key, val in tqdm(index_map.items()) if val not in indices_to_remove}
+        # print("New Number of Products:")
+        # print(len(index_map_new))
+
+        print("Number CoPurchase Lists:")
+        print(len(co_purchase_list))
+
+        print("Number of products: {}".format(len(index_map)))
 
         # Connectivity matrix, which has two entries for each of the nodes connected to the edge like
         # [1, 0, 3], [2, 3, 2] denotes edges 1 to 2, 0 to 3 and 3 to 2.
@@ -91,6 +100,7 @@ def load_graph(path):
         edge_index = 0
 
         # Fill the connectivity matrix with book co-purchase data
+        product_number_graph = 0
         with tqdm(total=len(products)) as pbar:
             for j, co_purchase in enumerate(co_purchase_list):
                 for product in co_purchase:
@@ -112,8 +122,7 @@ def load_graph(path):
         #
         #
         # print(adjacency_matrix.count_nonzero())
-        print(len(products))
-    return graph_connectivity
+    return graph_connectivity, index_map
 
 
 def node2vec(connectivity):
@@ -131,9 +140,12 @@ def node2vec(connectivity):
 
 if __name__ == "__main__":
     data_path = Path(__file__).parent.parent / 'data'
-    connectivity_array = load_graph(data_path)
+    connectivity_array, index_map_output = load_graph(data_path)
+    # print(set(connectivity_array.flatten()))
     np.save("data/connectivity_array", connectivity_array)
+    with open("data/index_mapping.pkl", 'wb') as f:
+        pickle.dump(index_map_output, f)
     graph_matrix = torch.tensor(connectivity_array)
-    node2vec(connectivity_array)
+    # node2vec(connectivity_array)
     # data = Data(edge_index=graph_matrix)
     # torch.save(data, "../data/graph_object_no_features")
