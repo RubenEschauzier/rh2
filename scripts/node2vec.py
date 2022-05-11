@@ -12,9 +12,11 @@ def node2vec(connectivity):
 
     graph = Graph(edges,
                   directed=True, weighted=False)
-    n2v = Node2Vec(graph, dim=300, walk_length=1, context=1, p=2.0, q=1, batch_walks=1, workers=14)
-    n2v.train(epochs=1)
+    n2v = Node2Vec(graph, dim=300, walk_length=80, context=10, p=2.0, q=1, batch_walks=10, workers=7)
+    n2v.train(epochs=10)
     word_vectors = n2v.wv
+    with open(data_path / 'node2vec_model.pkl', 'wb') as f:
+        pickle.dump(n2v, f)
 
 
 def test():
@@ -25,6 +27,6 @@ def test():
 
 if __name__ == "__main__":
     data_path = Path(__file__).parent.parent / 'data'
-    # book_graph = np.load(str(data_path) + "\connectivity_array.npy")
-    # node2vec(book_graph)
+    book_graph = np.load(str(data_path) + "\connectivity_array.npy")
+    node2vec(book_graph)
     test()

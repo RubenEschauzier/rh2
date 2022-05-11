@@ -5,11 +5,17 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+
+import pandas as pd
+import scipy
+
 from scipy.sparse import dok_matrix, coo_matrix
 from tqdm import tqdm
 import torch
-from torch_geometric.data import Data
 from fastnode2vec import Graph, Node2Vec
+
+print(scipy.version.version)
+
 
 # https://stackoverflow.com/questions/29760935/how-to-get-vector-for-a-sentence-from-the-word2vec-of-tokens-in-sentence
 
@@ -34,7 +40,9 @@ def plot_coo_matrix(m):
 
 def load_graph(path):
     with gzip.open(path / 'meta_Books.json.gz') as f:
-        products = []; co_purchase_list = []; index_map = {}
+        products = [];
+        co_purchase_list = [];
+        index_map = {}
         linked_products = set()
 
         total_edges = 0
@@ -68,7 +76,12 @@ def load_graph(path):
                         if prod not in co_purchase_list[co_p_index]:
                             total_non_mutual += 1
             pbar.update()
-        print("Percentage of non-mutual: {}".format(total_non_mutual/total_edges))
+        print("Percentage of non-mutual: {}".format(total_non_mutual / total_edges))
+
+        for i, purchases in enumerate(co_purchase_list):
+            for product in purchases:
+                pass
+
         # Remove products that are isolated in the graph, which means there is no connections to and from that book
         indices_to_remove = []
         # print("Finding indexes of isolated books.")
@@ -100,7 +113,6 @@ def load_graph(path):
         edge_index = 0
 
         # Fill the connectivity matrix with book co-purchase data
-        product_number_graph = 0
         with tqdm(total=len(products)) as pbar:
             for j, co_purchase in enumerate(co_purchase_list):
                 for product in co_purchase:
@@ -109,20 +121,90 @@ def load_graph(path):
                         graph_connectivity[1][edge_index] = index_map[product]
                         edge_index += 1
                 pbar.update()
-
-        # with tqdm(total=len(products)) as pbar:
-        #     for j, product_list in enumerate(product_list):
-        #         for product in product_list:
-        #             if product in index_map:
-        #                 adjacency_matrix[j,index_map[product]] = 1
-        #                 # adjacency_matrix[index_map[product],j] = 1
-        #         pbar.update()
+        graph_connectivity = graph_connectivity[:, :edge_index]
+        print(len(set(graph_connectivity.flatten())))
         # for i in range(len(products)):
         #     if adjacency_matrix[i,:].count_nonzero() == 0 and adjacency_matrix[:,i].count_nonzero() == 0:
         #
         #
         # print(adjacency_matrix.count_nonzero())
     return graph_connectivity, index_map
+
+
+def load_graph_new(path):
+    node_attr = pd.read_parquet(path / 'embed_data.gzip')
+    filtered_co_purchase = []
+    index_map = {}
+    filtered_index_map = {}
+    co_purchase_map = {}
+    filtered_purchase_map = {}
+    index_co_purchase_map = {}
+    products_to_remove = {}
+    total_edges = 0
+
+    # Create mapping of all books in cleaned data
+    for idx, asin in enumerate(node_attr['asin']):
+        index_map[asin] = idx
+
+    co_purchase_index = 0
+    for products in node_attr['also_buy']:
+        for product in products:
+            if product in index_map:
+                co_purchase_map[product] = co_purchase_index
+                co_purchase_index += 1
+
+    # Create mapping of all co-purchased books that are in the cleaned data
+
+    # start_index_co_purchase = max(index_map.values())
+    # for co_purchase in node_attr['also_buy']:
+    #     for product in co_purchase:
+    #         if product not in index_map:
+    #             index_map[product] = start_index_co_purchase
+    #             start_index_co_purchase += 1
+    filtered_co_purchase_idx = 0
+    for i, (asin, co_purchase) in enumerate(zip(node_attr['asin'], node_attr['also_buy'])):
+        # Remove all co-purchase links if it is not in our original cleaned data
+        new_co_purchase = [product for product in co_purchase if product in index_map]
+        # If the product has a co purchase link then add it to the new filtered copurchase data
+        if new_co_purchase:
+            total_edges += len(new_co_purchase)
+            filtered_co_purchase.append(new_co_purchase)
+            index_co_purchase_map[asin] = new_co_purchase
+            # Make new map with all products in the filtered version of the co-purchases
+            for product_id in new_co_purchase:
+                filtered_purchase_map[product_id] = filtered_co_purchase_idx
+                filtered_co_purchase_idx += 1
+
+    for i, (asin, co_purchase) in enumerate(zip(node_attr['asin'], node_attr['also_buy'])):
+        if asin not in filtered_purchase_map and asin not in index_co_purchase_map:
+            index_map.pop(asin)
+            products_to_remove[asin] = i
+
+    new_start_index = 0
+    for asin in node_attr['asin']:
+        if asin not in products_to_remove:
+            filtered_index_map[asin] = new_start_index
+            new_start_index += 1
+
+    graph_connectivity = np.zeros(shape=(2, total_edges))
+    edge_index = 0
+
+    for i, (asin, co_purchase) in enumerate(index_co_purchase_map.items()):
+        for product in co_purchase:
+            graph_connectivity[0][edge_index] = filtered_index_map[asin]
+            graph_connectivity[1][edge_index] = filtered_index_map[product]
+            edge_index += 1
+    graph_connectivity = graph_connectivity[:, :edge_index]
+
+    num_nodes = len(set(graph_connectivity.flatten()))
+    sparse_adj_matrix = dok_matrix((num_nodes, num_nodes), dtype=int)
+
+    with tqdm(total=graph_connectivity.shape[0]) as pbar:
+        for start, end in zip(graph_connectivity[0], graph_connectivity[1]):
+            sparse_adj_matrix[start, end] = 1
+            pbar.update()
+
+    return graph_connectivity, filtered_index_map, sparse_adj_matrix
 
 
 def node2vec(connectivity):
@@ -140,12 +222,15 @@ def node2vec(connectivity):
 
 if __name__ == "__main__":
     data_path = Path(__file__).parent.parent / 'data'
-    connectivity_array, index_map_output = load_graph(data_path)
+    connectivity_array, index_map_output, adj_matrix = load_graph_new(data_path)
+    # connectivity_array, index_map_output = load_graph(data_path)
     # print(set(connectivity_array.flatten()))
-    np.save("data/connectivity_array", connectivity_array)
-    with open("data/index_mapping.pkl", 'wb') as f:
-        pickle.dump(index_map_output, f)
-    graph_matrix = torch.tensor(connectivity_array)
+    # np.save("data/connectivity_array", connectivity_array)
+    # with open("data/index_mapp ing.pkl", 'wb') as f:
+    #     pickle.dump(index_map_output, f)
+    with open("data/sparse_adj_matrix.pkl", 'wb') as f_s:
+        pickle.dump(adj_matrix, f_s)
+    # graph_matrix = torch.tensor(connectivity_array)
     # node2vec(connectivity_array)
     # data = Data(edge_index=graph_matrix)
     # torch.save(data, "../data/graph_object_no_features")
