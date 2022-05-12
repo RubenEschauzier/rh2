@@ -1,0 +1,198 @@
+\documentclass[a4paper]{article} %11pt, a4paper
+
+\PassOptionsToPackage{authoryear, round}{natbib}
+\usepackage[preprint]{neurips_2021} % use final option for submission
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc} % define font encoding for european languages
+\usepackage[english]{babel} % adjust language style
+
+% fonts
+% \usepackage{lmodern}
+% \usepackage{times}
+
+% appearance
+\usepackage[babel = true]{microtype} % improves general appearance
+% \usepackage[margin=1in, lmargin = 1in, rmargin = 1in]{geometry} % for defining margins / layout of the document
+% \usepackage[onehalfspacing]{setspace} % line spacing 1.5 = onehalfspacing
+% \setlength{\parskip}{0.7em} % vertical space between paragraphs (standard: 1em, medskip = 0.6em)
+
+% tables
+\usepackage{booktabs} % better tables; toprule, bottomrule, midrule
+\usepackage[flushleft]{threeparttable} % for tablenotes
+\usepackage{multirow} % multirow command
+\usepackage{tabularx} % for table format e.g. text wrapping
+\usepackage{longtable} % for long tables going over pages
+\usepackage[tableposition=below]{caption}
+\usepackage{siunitx} % S column type to align on decimal
+
+% figures
+\usepackage{float} % use H in figures to determine float pages
+\usepackage[pdftex]{graphicx}  % includegraphics
+\usepackage{subcaption} %  subfigure environment
+\usepackage{wrapfig} % wrap text around small floats, wrapfigure and wraptable environments
+
+% others added
+\usepackage{pdflscape} % landscape environment to turn pages
+\usepackage[dvipsnames]{xcolor} % define colors
+\definecolor{darkblue}{rgb}{0, 0, 0.5}
+% \definecolor{dark-blue}{rgb}{0.15,0.15,0.4}
+\usepackage[ruled,vlined]{algorithm2e}
+
+% tikz
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, matrix, positioning, fit, decorations.pathreplacing}
+
+% links and bibliography
+\usepackage{url} % correct url formatting
+\usepackage[hyphenbreaks]{breakurl} % break urls correctly
+% \renewcommand{\UrlFont}{\ttfamily\small}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, citecolor=MidnightBlue, linkcolor=Black, urlcolor=MidnightBlue}
+% \usepackage[nottoc,notlot,notlof]{tocbibind} % list bibliography as unnumbered section in table of contents
+% \settocbibname{References} % name of reference list in table of contents
+% \usepackage[authoryear, round]{natbib} % bibliography style
+
+% math packages and definitions
+\input{math_commands}
+
+% allow for easy comments and todos
+\definecolor{markus}{rgb}{0.0, 0.8, 0.8}
+\newcommand{\MM}[1]{\textcolor{red}{\textbf{Markus:} #1}}
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+% opening 
+\title{The Efficient Placement of new Products in a Co-Purchasing Graph}
+
+\author{%
+  Markus Mueller \\
+  Business Data Science \\
+  Amsterdam, Netherlands \\
+  \texttt{mueller@ese.eur.nl}\\
+  \And
+  Ruben Eschauzier \\
+  Business Data Science \\
+  Amsterdam, Netherlands \\
+  \texttt{fill.email@email.com}
+\date{27th May 2022}
+}
+
+% remove this in final copy to make hyperlinks
+\hypersetup{draft}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+
+\end{abstract}
+
+\section{Introduction}
+
+for relevance, find some news articles on that
+
+
+There are various reasons why a new book needs to be placed inside an existing co-purchasing graph. First, it kick-starts a recommendation system which is based on the graph structure. Also, Marketeers and others may be interested in the predicted co-purchasing links of a product currently under development. Such co-purchasing yield information about potential revenues, required Marketing efforts, direct competitors, and potential complements. Lastly, product developers may be interested in using our framework as a tool that aids their product idea generation. Our tools helps them to quickly evaluate how their product idea compares to existing customer preferences. 
+
+Besides these practical contributions, our proposed frameworks also \MM{list academic, technical contributions}
+
+
+Summary of our contributions:
+\begin{itemize}
+    \item 1
+\end{itemize}
+
+\section{Related Work}
+
+
+
+\subsection{Placing new Product in Co-Purchasing Network}
+
+\subsection{Link Prediction}
+
+\citet{ahmed2021}
+
+\citet{ni2019}
+
+\citet{xia2021}
+
+\citet{zhou2020}
+
+\subsection{Clustering}
+
+The purpose of using clustering (or community detection in the context of networks) in our framework, is solely to reduce the computational burden of link prediction. By first deriving node embeddings, aligning them with the text embeddings (and other attributes), and then clustering the training data based on these node embeddings, we can first determine the cluster that reflects a new product the most before engaging in individual link prediction. \MM{put this part in method bit, here only general background and summary of some methods}
+
+\citet{su2021}
+
+\citet{liu2020a}
+
+\citet{hao2020}
+
+\citet{xu2021}
+
+\citet{zhang2021}
+
+
+
+
+\citet{chen2020} KNN-DBSCAM, \citet{chen2021b} BLOCK-DBSCAN. These adapt the well-known DBSCAN algorithm (REFERENCE) to make it tractable on high-dimensional data. Despite being an approximation of the original DBSCAN results, these adapted implementations still have properties which would benefit our benefit our model. First, they do not require a pre-specified number of clusters, which streamlines the training process and makes it potentially less dependent on hyperparameter choices. Second, they form clusters based on density estimation and as such can detect outliers and gather them in a separate cluster. This would allow us to potentially save computational time, if we drop the group of outliers from the latter part of our proposed framework. Unfortunately, although these adaptions achieved great first experimental results \citep{chen2020, chen2021b}, they are currently  still lacking an openly available implementation. Hence, we refrained from using them.
+
+\section{Methodology}
+
+\MM{put in tikz graph to explain framework and guide through sub-sections}
+
+\subsection{Node Embeddings}
+
+\subsection{Text Embeddings}
+
+\subsection{Embedding Alignment}
+
+\subsection{Clustering / Community Detection}
+
+\subsection{Link Prediction}
+
+\subsection{Evaluation Metrics}
+
+\section{Results and Discussion}
+
+\subsection{Data Description}
+
+We use Amazon metadata\footnote{Available \url{https://nijianmo.github.io/amazon/index.html##subsets}.} gathered by \citet{ni2019}. These include information about a product's identifier, title, description, price, category, and co-purchasing links. Note that we consider only books and disregard other products, since books have an intuitive appeal to them that serves our proof of concept particularly well: Creating a new book to be placed in the co-purchasing network amounts to choosing a title, short description, price and a one or several (sub-) genres, i.e.\ its category. This reflects the actual product development framework exceptionally well and provides us with additional intuition of what our model achieves, e.g.\ if it places a horror-crime book in between the separate genres horror and crime in the embedding space. While this is certainly possible with other product categories, the straight-forward interpretative nature of the results may be lost in some cases. Besides that, books exhibit rather consistent descriptions and informative titles compared to other product categories, which simplifies the data preprocessing stage. 
+
+\subsection{Embedding Alignment and Link Prediction}
+
+\paragraph{Network Settings}
+
+
+\section{Limitations and Future Work}
+
+\begin{itemize}
+    \item extend alignment of embeddings to the inclusion of other product attributes, besides the product's ((aggregated) title and descriptions. 
+    \item using DBSCAN instead of KNN
+    \item benchmarks for different modelling choices, e.g.\ only aligning text embeddings and node embeddings, instead of all attributes of a product or the link prediction model. This was unfortunately not possible with our limited computational resources.
+\end{itemize}
+
+
+\section{Conclusions}
+
+
+\newpage
+\bibliography{bib_rh2} 
+\bibliographystyle{apalike}
+
+\newpage
+\appendix 
+
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
