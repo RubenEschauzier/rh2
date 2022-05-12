@@ -48,8 +48,6 @@ class EmbeddingAlignment(t.nn.Module):
 
     def create_embedding_layer_node2vec(self):
         node_emb = np.zeros((self.dataloader.max_n_index + 1, 300))
-        # print(self.dataloader.attr_emb['asin'])
-        # print(self.index_mapping)
 
         graph_used_set = set(self.dataloader.graph.flatten())
         new_index = 0
@@ -66,6 +64,12 @@ class EmbeddingAlignment(t.nn.Module):
         node_emb_layer = t.nn.Embedding.from_pretrained(node_emb_tensor)
         node_emb_layer.weight.requires_grad = True
         return node_emb_layer
+
+    def save_embedding_layers(self):
+        model_folder = Path(__file__).parent.parent / 'model'
+
+        layers = {'desc_emb': self.desc_emb, 'title_emb': self.title_emb, 'node_emb': self.node_emb}
+        t.save(layers, model_folder/'aligned_emb')
 
     def rank_loss(self, batch, links, gamma, beta):
         """
@@ -92,10 +96,12 @@ class EmbeddingAlignment(t.nn.Module):
         title_emb = self.title_emb(batch)
         attr_emb = t.mean(t.stack((desc_emb, title_emb), dim=2), dim=2)
         node_emb = self.node_emb(batch)
+
         alignment_loss = self.alignment_loss(attr_emb, node_emb, links)
-        loss = gamma_1 * self.rank_loss(attr_emb, links, 1, 2) + gamma_2 * \
-               self.rank_loss(node_emb, links, 1, 2) + gamma_3 * alignment_loss
-        return loss, alignment_loss
+        rank_loss_attr = self.rank_loss(attr_emb, links, 1, 2)
+        rank_loss_nodes = self.rank_loss(node_emb, links, 1, 2)
+        loss = gamma_1 * rank_loss_attr + gamma_2 * rank_loss_nodes + gamma_3 * alignment_loss
+        return -loss, alignment_loss
 
     def weight_function(self, beta, const):
         """
@@ -127,7 +133,7 @@ class EmbeddingAlignment(t.nn.Module):
             nodes = nodes.to(device)
             y = y.to(device)
 
-            loss, alignment_loss = self.total_loss(nodes, y, 1, 1, 6)
+            loss, alignment_loss = self.total_loss(nodes, y, 1, 1, 1)
             loss.backward()
 
             optimizer.step()
@@ -228,8 +234,8 @@ def train_model(num_epochs):
         avg_align_loss, avg_loss_epoch = model.train_epoch(optimizer, device)
         scheduler.step(avg_loss_epoch)
         print("Average Loss: {}, average alignment loss: {}, epoch {}/{}".format(avg_loss_epoch, avg_align_loss,
-                                                                                 i, num_epochs))
-
+                                                                                 i+1, num_epochs))
+    model.save_embedding_layers()
 
 if __name__ == "__main__":
     # data_path = Path(__file__).parent.parent / 'data'
@@ -239,4 +245,4 @@ if __name__ == "__main__":
     # # print(node_attr)
     # embedding_align = EmbeddingAlignment(loader, 5, 10, 1)
     # embedding_align.train_epoch()
-    train_model(30)
+    train_model(20)
