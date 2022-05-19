@@ -54,6 +54,7 @@ embedding(i).numpy() == vector
 
 # shuffle
 df = df.sample(frac=1, random_state=2).reset_index(drop=True)
+df.drop(labels = ['clean_title', 'clean_description'], axis = 1, inplace = True)
 
 # split
 train_set = df.sample(frac=0.8, random_state=22)
@@ -65,79 +66,6 @@ pickle.dump(test_set, open( "../data/test_set.p", "wb" ))
 pickle.dump(word2id, open( "../data/word2id.p", "wb" ))
 pickle.dump(id2word, open( "../data/id2word.p", "wb" ))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# train test split
-train = df.sample(frac=0.8, random_state=22)
-test = df.drop(train.index)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# process titles, get mean vector for each title (300 dimensional)
-raw_titles = df['clean_title'].to_list()
-title_embeds = [nlp(raw_title).vector for raw_title in tqdm(raw_titles)]
-df['title_embed'] = title_embeds
-del title_embeds, raw_titles
-
-# process descriptions, get mean vector for each description (300 dimensional)
-raw_descs = df['clean_description'].to_list()
-desc_embeds = [nlp(raw_desc).vector for raw_desc in tqdm(raw_descs)]
-df['description_embed'] = desc_embeds
-del desc_embeds, raw_descs
-
-
-
-
-df.drop(labels = ['clean_title', 'clean_description'], axis = 1, inplace = True)
-df.to_parquet(data_path / 'embed_data.gzip', compression = 'gzip')
-
-
-
-
-# check if vectors of books in a small subcategory are similar
 
 
 
