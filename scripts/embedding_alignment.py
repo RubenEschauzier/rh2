@@ -69,7 +69,7 @@ class EmbeddingAlignment(t.nn.Module):
         model_folder = Path(__file__).parent.parent / 'model'
 
         layers = {'desc_emb': self.desc_emb, 'title_emb': self.title_emb, 'node_emb': self.node_emb}
-        t.save(layers, model_folder/'aligned_emb')
+        t.save(layers, model_folder / 'aligned_emb')
 
     def rank_loss(self, batch, links, gamma, beta):
         """
@@ -164,7 +164,7 @@ class NodePairBatchLoader(Dataset):
         self.sparse_adj_matrix = self.load_sparse_adj_matrix()
 
         # Pre-calculate some useful statistics
-        self.n_nodes = len(set(self.graph.flatten()))
+        self.n_nodes = len(self.index_map)
         self.max_n_index = max(self.index_map.values())
         self.n_edges = self.graph.shape[1]
         self.batch_size = batch_size
@@ -234,15 +234,54 @@ def train_model(num_epochs):
         avg_align_loss, avg_loss_epoch = model.train_epoch(optimizer, device)
         scheduler.step(avg_loss_epoch)
         print("Average Loss: {}, average alignment loss: {}, epoch {}/{}".format(avg_loss_epoch, avg_align_loss,
-                                                                                 i+1, num_epochs))
+                                                                                 i + 1, num_epochs))
     model.save_embedding_layers()
 
+
 if __name__ == "__main__":
-    # data_path = Path(__file__).parent.parent / 'data'
+    data_path = Path(__file__).parent.parent / 'data'
     # loader = NodePairBatchLoader(data_path / "connectivity_array.npy", data_path / "index_mapping.pkl",
     #                              data_path / "embed_data.gzip", data_path / "node2vec_model.pkl", 10)
     # # node_attr = pd.read_parquet(data_path / 'embed_data.gzip')
     # # print(node_attr)
     # embedding_align = EmbeddingAlignment(loader, 5, 10, 1)
     # embedding_align.train_epoch()
-    train_model(20)
+    # train_model(20)
+    from sklearn.cluster import KMeans
+    data_loader = NodePairBatchLoader(data_path / "connectivity_array.npy", data_path / "index_mapping.pkl",
+                                      data_path / "embed_data.gzip", data_path / "node2vec_model.pkl",
+                                      data_path / 'sparse_adj_matrix.pkl', 500)
+    trained_layers = t.load(Path(__file__).parent.parent/'model'/'aligned_emb')
+
+    title_emb_array = np.array(trained_layers['title_emb'].weight.data.cpu())
+    attr_emb_array = np.array(trained_layers['desc_emb'].weight.data.cpu())
+
+
+    kmeans = KMeans(n_clusters=20, random_state=0).fit(title_emb_array)
+    k_means_desc = KMeans(n_clusters=10, random_state=0).fit(attr_emb_array)
+    label_list = kmeans.labels_
+    label_list_desc = kmeans.labels_
+
+    u, counts = np.unique(label_list, return_counts=True)
+    test = [i for i in range(len(label_list)) if label_list[i] == 2]
+
+    u_desc, counts_desc = np.unique(label_list_desc, return_counts=True)
+    test_desc = [i for i in range(len(label_list_desc)) if label_list_desc[i] == 2]
+
+    val_list = list(data_loader.index_map.values())
+    key_list = list(data_loader.index_map.keys())
+
+    for i, id in enumerate(test):
+        asin = key_list[val_list.index(id)]
+        print(key_list[val_list.index(id)])
+        print(data_loader.attr_emb.loc[data_loader.attr_emb['asin'] == asin]['title'])
+        if i>15:
+            break
+
+    for j, id_desc in enumerate(test_desc):
+        asin = key_list[val_list.index(id_desc)]
+        print(asin)
+        print(data_loader.attr_emb.loc[data_loader.attr_emb['asin'] == asin]['description'])
+
+
+
