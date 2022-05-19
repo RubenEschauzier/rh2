@@ -226,7 +226,7 @@ if __name__ == "__main__":
     # connectivity_array, index_map_output = load_graph(data_path)
     # print(set(connectivity_array.flatten()))
     # np.save("data/connectivity_array", connectivity_array)
-    # with open("data/index_mapp ing.pkl", 'wb') as f:
+    # with open("data/index_mapping.pkl", 'wb') as f:
     #     pickle.dump(index_map_output, f)
     with open("data/sparse_adj_matrix.pkl", 'wb') as f_s:
         pickle.dump(adj_matrix, f_s)
