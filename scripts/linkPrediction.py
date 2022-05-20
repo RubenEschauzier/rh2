@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch as t
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -42,16 +43,16 @@ def split_graph(graph_edges, index_mapping):
 
 
 class LinkPrediction(t.nn.Module):
-    def __init__(self, loss):
+    def __init__(self, loss, batches):
         super(LinkPrediction, self).__init__()
         self.device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
         self.train_dataloader = NodePairBatchLoader(data_path / "graph_edges_arrays/graph_train.npy",
                                                     data_path / "index_mappings/index_map_train.pkl",
                                                     data_path / "embed_data.gzip", data_path / "node2vec_model.pkl",
-                                                    data_path / 'sparse_adj_matrix.pkl', 500)
-        self.optimizer = t.optim.Adam(self.parameters(), lr=0.1)
+                                                    data_path / 'sparse_adj_matrix.pkl', 750)
         self.loss = loss
+        self.batches_per_epoch = batches
 
         self.title_emb, self.desc_emb, self.node_emb = self.load_emb_test()
 
@@ -65,18 +66,21 @@ class LinkPrediction(t.nn.Module):
         self.sigmoid = t.nn.Sigmoid()
 
         self.dropout = t.nn.Dropout(p=.1)
-        self.batch_norm1 = t.nn.BatchNorm1d(600, device=self.device)
+        self.batch_norm1 = t.nn.BatchNorm1d(100, device=self.device)
 
     def forward(self, inputs_node, inputs_attr, gamma):
-        x_node = self.relu(self.input_dense_node(inputs_node))
+        inputs_node = t.concat((inputs_node[0], inputs_node[1]), dim=1)
+        inputs_attr = t.concat((inputs_attr[0], inputs_attr[1]), dim=1)
+
+        x_node = self.activation(self.input_dense_node(inputs_node))
         x_node = self.batch_norm1(x_node)
-        x_node = self.relu(self.hidden_layer_node(x_node))
+        x_node = self.activation(self.hidden_layer_node(x_node))
         x_node = self.dropout(x_node)
         x_node = self.output_value_node(x_node)
 
-        x_attr = self.relu(self.input_dense_attr(inputs_attr))
+        x_attr = self.activation(self.input_dense_attr(inputs_attr))
         x_attr = self.batch_norm1(x_attr)
-        x_attr = self.relu(self.hidden_layer_attr(x_attr))
+        x_attr = self.activation(self.hidden_layer_attr(x_attr))
         x_attr = self.dropout(x_attr)
         x_attr = self.output_value_attr(x_attr)
 
@@ -91,18 +95,21 @@ class LinkPrediction(t.nn.Module):
         for i in range(self.batches_per_epoch):
             optimizer.zero_grad()
 
-            nodes, y = self.dataloader[i]
+            nodes, y = self.train_dataloader[i]
             nodes = nodes.to(self.device)
-            y = y.to(self.device)
+            y = y.to(self.device).float()
 
-            test = self.title_emb(nodes)
+            title_emb_batch = self.title_emb(nodes)
+            desc_emb_batch = self.desc_emb(nodes)
+            attr_emb_batch = t.mean(t.stack((title_emb_batch, desc_emb_batch), dim=2),dim=2)
 
+            node_emb_batch = self.node_emb(nodes)
 
-            pred_y = self.forward()
-            loss, alignment_loss = self.get_loss()
+            pred_y = t.squeeze(self.forward(node_emb_batch, attr_emb_batch, t.FloatTensor([1, 1])))
+            loss = self.get_loss(pred_y, y)
             loss.backward()
 
-            self.optimizer.step()
+            optimizer.step()
 
             running_loss += loss.item()
 
@@ -117,12 +124,20 @@ class LinkPrediction(t.nn.Module):
         embeddings['node_emb'].trainable = False
         return embeddings['title_emb'], embeddings['desc_emb'], embeddings['node_emb']
 
-def train_model():
+
+def train_model(epochs):
     device = t.device("cuda" if t.cuda.is_available() else "cpu")
-    model = LinkPrediction(t.nn.BCEWithLogitsLoss()).to(device)
+    model = LinkPrediction(t.nn.BCEWithLogitsLoss(), 1000).to(device)
 
     optimizer = t.optim.Adam(model.parameters(), lr=0.1)
     model.train_epoch(optimizer)
+    scheduler = ReduceLROnPlateau(optimizer, 'min')
+    model.train()
+    for i in range(epochs):
+        avg_loss_epoch = model.train_epoch(optimizer)
+        scheduler.step(avg_loss_epoch)
+        print("Average Loss: {}, epoch {}/{}".format(avg_loss_epoch,
+                                                                                 i + 1, epochs))
 
 
 
@@ -217,5 +232,5 @@ if __name__ == "__main__":
     # with open(data_path / "index_mappings/index_map_test.pkl", "wb") as f:
     #     pickle.dump(index_map_test, f)
 
-    train_model()
+    train_model(10)
 
