@@ -28,13 +28,31 @@ model = api.load('word2vec-google-news-300')
 token_titles = [[model.key_to_index[token] for token in doc.split() if token in model.key_to_index] for doc in raw_titles]
 token_descs = [[model.key_to_index[token] for token in doc.split() if token in model.key_to_index] for doc in raw_descs]
 
+# padding to max length for titles
+# title_lengths = [len(doc) for doc in token_titles]
+# max_title_length = max(title_lengths)
+
+# desc_lengths = [len(doc) for doc in token_descs]
+# max_desc_length = int(np.percentile(desc_lengths, 95))
+
+# remove tokens going above max_desc_length
+
+
 # get word2id and id2word
 word2id = model.key_to_index
 id2word = model.index_to_key
 
 # get embedding
 weights = torch.FloatTensor(model.vectors) # or model.wv directly
-embedding = nn.Embedding.from_pretrained(weights)
+embedding = nn.Embedding.from_pretrained(weights, padding_idx = 0)
+
+# make sure 0 index layer is padding
+with torch.no_grad():
+    embedding.weight[0] = torch.zeros(300)
+
+# proof that it works
+i = torch.LongTensor([0,2,0])
+embedding(i).numpy()
 
 ##############################################################################
 # proof that it works
