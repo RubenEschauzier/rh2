@@ -29,14 +29,18 @@ token_titles = [[model.key_to_index[token] for token in doc.split() if token in 
 token_descs = [[model.key_to_index[token] for token in doc.split() if token in model.key_to_index] for doc in raw_descs]
 
 # padding to max length for titles
-# title_lengths = [len(doc) for doc in token_titles]
-# max_title_length = max(title_lengths)
+title_lengths = [len(doc) for doc in token_titles]
+max_title_length = max(title_lengths)
 
-# desc_lengths = [len(doc) for doc in token_descs]
-# max_desc_length = int(np.percentile(desc_lengths, 95))
+desc_lengths = [len(doc) for doc in token_descs]
+max_desc_length = int(np.percentile(desc_lengths, 95))
 
 # remove tokens going above max_desc_length
+token_descs = [[token for i,token in enumerate(doc) if i < max_desc_length] for doc in token_descs]
 
+# add padding to titles and descriptions
+[doc.extend([0] * (max_title_length - len(doc))) for doc in token_titles if len(doc) < max_title_length]
+[doc.extend([0] * (max_desc_length- len(doc))) for doc in token_descs if len(doc) < max_desc_length]
 
 # get word2id and id2word
 word2id = model.key_to_index
