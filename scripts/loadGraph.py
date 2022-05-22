@@ -132,7 +132,9 @@ def load_graph(path):
 
 
 def load_graph_new(path):
-    node_attr = pd.read_parquet(path / 'embed_data.gzip')
+    # node_attr = pd.read_parquet(path / 'embed_data.gzip')
+    node_attr = pd.read_parquet(path/'cleaned_data.gzip')
+    print(node_attr)
     filtered_co_purchase = []
     index_map = {}
     filtered_index_map = {}
@@ -225,9 +227,9 @@ if __name__ == "__main__":
     connectivity_array, index_map_output, adj_matrix = load_graph_new(data_path)
     # connectivity_array, index_map_output = load_graph(data_path)
     # print(set(connectivity_array.flatten()))
-    # np.save("data/connectivity_array", connectivity_array)
-    # with open("data/index_mapping.pkl", 'wb') as f:
-    #     pickle.dump(index_map_output, f)
+    np.save("data/connectivity_array", connectivity_array)
+    with open("data/index_mapping.pkl", 'wb') as f:
+        pickle.dump(index_map_output, f)
     with open("data/sparse_adj_matrix.pkl", 'wb') as f_s:
         pickle.dump(adj_matrix, f_s)
     # graph_matrix = torch.tensor(connectivity_array)

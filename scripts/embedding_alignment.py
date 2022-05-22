@@ -1,7 +1,8 @@
 import random
+import sys
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+import gensim.downloader as api
 from node2vec import *
 from word2vec import *
 import torch as t
@@ -15,6 +16,7 @@ class EmbeddingAlignment(t.nn.Module):
         super().__init__()
         self.dataloader = dataloader
         self.index_mapping = self.dataloader.index_map
+        self.index_asin = {value: key for key, value in self.index_mapping.items()}
         self.title_emb, self.desc_emb = self.create_embedding_layers_word2vec()
         self.title_emb.to(device)
         self.desc_emb.to(device)
@@ -25,6 +27,21 @@ class EmbeddingAlignment(t.nn.Module):
         self.device = device
         # Cosine similarity across the first dimension
         self.cosine_similarity = t.nn.CosineSimilarity(dim=1)
+
+        self.attr_df = pd.read_pickle("../data/padded_attr_df.pkl")
+        # Max sizes is for any element since they are padded
+        self.max_title_size = len(self.attr_df['padded_title_ids'][0])
+        self.max_desc_size = len(self.attr_df['padded_desc_ids'][0])
+
+        self.word2vec_model = api.load('word2vec-google-news-300')
+        self.word2id = self.word2vec_model.key_to_index
+        self.id2word = self.word2vec_model.index_to_key
+
+        # get word embeddings we will train
+        weights = torch.FloatTensor(self.word2vec_model.vectors)  # or model.wv directly
+        # self.word_embedding_bag = t.nn.EmbeddingBag.from_pretrained(weights, padding_idx=0, freeze=False, mode='mean')
+        self.word_embeddings = t.nn.Embedding.from_pretrained(weights, padding_idx=0, freeze=False)
+        self.word_embeddings.weight = self.word_embeddings.weight.to('cpu')
 
     def create_embedding_layers_word2vec(self):
         title_emb = np.zeros((self.dataloader.max_n_index + 1, 300))
@@ -103,6 +120,68 @@ class EmbeddingAlignment(t.nn.Module):
         loss = gamma_1 * rank_loss_attr + gamma_2 * rank_loss_nodes + gamma_3 * alignment_loss
         return -loss, alignment_loss
 
+    def total_loss_word2vec_based(self, batch_nodes, links, gamma_1, gamma_2, gamma_3):
+        nodes_tensor = t.IntTensor(batch_nodes).to(self.device)
+        node_emb = self.node_emb(nodes_tensor)
+
+        # Convert batch of node indices to asin to retrieve title and such
+        padded_w2v_title = np.zeros(shape=(2, batch_nodes.shape[1], self.max_title_size), dtype=int)
+        padded_w2v_desc = np.zeros(shape=(2, batch_nodes.shape[1], self.max_desc_size), dtype=int)
+
+        # SLOW LOOP!
+        for i, (start, end) in enumerate(zip(batch_nodes[0], batch_nodes[1])):
+            padded_w2v_title[0, i] = \
+                self.attr_df['padded_title_ids'][self.attr_df['asin'] == self.index_asin[start]].values[0]
+            padded_w2v_title[1, i] = \
+                self.attr_df['padded_title_ids'][self.attr_df['asin'] == self.index_asin[end]].values[0]
+            padded_w2v_desc[0, i] = \
+                self.attr_df['padded_desc_ids'][self.attr_df['asin'] == self.index_asin[start]].values[0]
+            padded_w2v_desc[1, i] = \
+                self.attr_df['padded_desc_ids'][self.attr_df['asin'] == self.index_asin[end]].values[0]
+
+        mask_title = t.IntTensor(padded_w2v_title != 0)
+        mask_desc = t.IntTensor(padded_w2v_desc != 0)
+
+        num_elements_title = torch.sum(mask_title, -1, keepdim=True)
+        num_elements_desc = torch.sum(mask_desc, -1, keepdim=True)
+        print("Size of num elements: {}".format(num_elements_desc.element_size()*num_elements_desc.nelement()))
+
+        padded_w2v_title = t.IntTensor(padded_w2v_title).to(self.device)
+        padded_w2v_desc = t.IntTensor(padded_w2v_desc).to(self.device)
+
+        print("Size of padded w2v: {}".format(padded_w2v_desc.element_size()*padded_w2v_desc.nelement()))
+        print(padded_w2v_title.is_cuda)
+        print(self.word_embeddings.weight.is_cuda)
+        title_embeddings = self.word_embeddings(padded_w2v_title).to('cpu')
+        desc_embeddings = self.word_embeddings(padded_w2v_desc).to('cpu')
+
+        print("Size of the embeddings: {}".format(desc_embeddings.element_size()*desc_embeddings.nelement()))
+        mask_title = mask_title.unsqueeze(-1)
+        mask_desc = mask_desc.unsqueeze(-1)
+        # Very weird way to add size to tensor, but hey it works
+        new_shape_title = list(mask_title.shape)
+        new_shape_desc = list(mask_desc.shape)
+
+        new_shape_title[-1] = title_embeddings.shape[-1]
+        new_shape_desc[-1] = desc_embeddings.shape[-1]
+
+        mask_title = mask_title.expand(new_shape_title)
+        mask_desc = mask_desc.expand(new_shape_desc)
+        print("Size of the masks {}".format(mask_title.element_size()*mask_title.nelement()))
+
+        feat_title = torch.sum(title_embeddings * mask_title, dim=2) / num_elements_title
+        feat_desc = torch.sum(desc_embeddings * mask_desc, dim=2) / num_elements_desc
+        print("Size of the feature tensor: {}".format(feat_desc.element_size()*feat_desc.nelement()))
+        attr_emb = t.mean(t.stack((feat_title, feat_desc), dim=2), dim=2).to(self.device)
+        print("Size of attribute embedding tensor: {}".format(attr_emb.element_size()*attr_emb.nelement()))
+        alignment_loss = self.alignment_loss(attr_emb, node_emb, links)
+        rank_loss_attr = self.rank_loss(attr_emb, links, 1, 2)
+        rank_loss_nodes = self.rank_loss(node_emb, links, 1, 2)
+        loss = gamma_1 * rank_loss_attr + gamma_2 * rank_loss_nodes + gamma_3 * alignment_loss
+        torch.cuda.empty_cache()
+        return loss, 1
+        pass
+
     def weight_function(self, beta, const):
         """
         Function to weigh samples, doesn't do anything now. Should use shortest path, but that is VERY infeasible for
@@ -127,13 +206,14 @@ class EmbeddingAlignment(t.nn.Module):
         running_loss = 0.
 
         for i in range(self.batches_per_epoch):
+            print(i)
             optimizer.zero_grad()
 
             nodes, y = self.dataloader[i]
-            nodes = nodes.to(device)
+            # nodes = nodes.to(device)
             y = y.to(device)
 
-            loss, alignment_loss = self.total_loss(nodes, y, 1, 1, 1)
+            loss, alignment_loss = self.total_loss_word2vec_based(nodes, y, 1, 1, 1)
             loss.backward()
 
             optimizer.step()
@@ -186,7 +266,7 @@ class NodePairBatchLoader(Dataset):
         nodes_shuffled = np.take(nodes, shuffle_index, axis=1)
         y_shuffled = np.take(y, shuffle_index, axis=0)
         y = t.IntTensor(y_shuffled)
-        nodes = t.IntTensor(nodes_shuffled)
+        # nodes = t.IntTensor(nodes_shuffled)
         return nodes, y
 
     def load_graph_file(self):
@@ -211,17 +291,18 @@ class NodePairBatchLoader(Dataset):
 
     def get_batch(self):
         # This can generate self edge connections, but should happen very rarely
-        nodes = np.random.randint(0, self.n_nodes, (2, self.batch_size - int(self.batch_size * .1)))
+        nodes = np.random.choice(list(self.index_map.values()), (2, self.batch_size - int(self.batch_size * .1)))
         real_connection = self.graph[:, np.random.randint(0, self.n_edges, size=int(self.batch_size * .1))]
-        nodes = np.c_[nodes, real_connection]
-        return nodes
+        nodes_full = np.c_[nodes, real_connection]
+        return nodes_full
 
 
 def train_model(num_epochs):
     data_folder = Path(__file__).parent.parent / 'data'
-    data_loader = NodePairBatchLoader(data_folder / "connectivity_array.npy", data_folder / "index_mapping.pkl",
+    data_loader = NodePairBatchLoader(data_folder / "graph_edges_arrays/graph_train.npy",
+                                      data_folder / "index_mappings/index_map_train.pkl",
                                       data_folder / "embed_data.gzip", data_folder / "node2vec_model.pkl",
-                                      data_folder / 'sparse_adj_matrix.pkl', 500)
+                                      data_folder / 'sparse_adj_matrix.pkl', 1)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = EmbeddingAlignment(data_loader, device, 1000, 1, 1)
@@ -246,42 +327,26 @@ if __name__ == "__main__":
     # # print(node_attr)
     # embedding_align = EmbeddingAlignment(loader, 5, 10, 1)
     # embedding_align.train_epoch()
-    # train_model(20)
+    train_model(20)
     from sklearn.cluster import KMeans
-    data_loader = NodePairBatchLoader(data_path / "connectivity_array.npy", data_path / "index_mapping.pkl",
-                                      data_path / "embed_data.gzip", data_path / "node2vec_model.pkl",
-                                      data_path / 'sparse_adj_matrix.pkl', 500)
-    trained_layers = t.load(Path(__file__).parent.parent/'model'/'aligned_emb')
+    # data_loader = NodePairBatchLoader(data_path / "connectivity_array.npy", data_path / "index_mapping.pkl",
+    #                                   data_path / "embed_data.gzip", data_path / "node2vec_model.pkl",
+    #                                   data_path / 'sparse_adj_matrix.pkl', 500)
+    # trained_layers = t.load(Path(__file__).parent.parent/'model'/'aligned_emb')
+    #
+    # title_emb_array = np.array(trained_layers['title_emb'].weight.data.cpu())
+    # attr_emb_array = np.array(trained_layers['desc_emb'].weight.data.cpu())
 
-    title_emb_array = np.array(trained_layers['title_emb'].weight.data.cpu())
-    attr_emb_array = np.array(trained_layers['desc_emb'].weight.data.cpu())
-
-
-    kmeans = KMeans(n_clusters=20, random_state=0).fit(title_emb_array)
-    k_means_desc = KMeans(n_clusters=10, random_state=0).fit(attr_emb_array)
-    label_list = kmeans.labels_
-    label_list_desc = kmeans.labels_
-
-    u, counts = np.unique(label_list, return_counts=True)
-    test = [i for i in range(len(label_list)) if label_list[i] == 2]
-
-    u_desc, counts_desc = np.unique(label_list_desc, return_counts=True)
-    test_desc = [i for i in range(len(label_list_desc)) if label_list_desc[i] == 2]
-
-    val_list = list(data_loader.index_map.values())
-    key_list = list(data_loader.index_map.keys())
-
-    for i, id in enumerate(test):
-        asin = key_list[val_list.index(id)]
-        print(key_list[val_list.index(id)])
-        print(data_loader.attr_emb.loc[data_loader.attr_emb['asin'] == asin]['title'])
-        if i>15:
-            break
-
-    for j, id_desc in enumerate(test_desc):
-        asin = key_list[val_list.index(id_desc)]
-        print(asin)
-        print(data_loader.attr_emb.loc[data_loader.attr_emb['asin'] == asin]['description'])
-
-
-
+    # kmeans = KMeans(n_clusters=20, random_state=0).fit(title_emb_array)
+    # k_means_desc = KMeans(n_clusters=10, random_state=0).fit(attr_emb_array)
+    # label_list = kmeans.labels_
+    # label_list_desc = kmeans.labels_
+    #
+    # u, counts = np.unique(label_list, return_counts=True)
+    # test = [i for i in range(len(label_list)) if label_list[i] == 2]
+    #
+    # u_desc, counts_desc = np.unique(label_list_desc, return_counts=True)
+    # test_desc = [i for i in range(len(label_list_desc)) if label_list_desc[i] == 2]
+    #
+    # val_list = list(data_loader.index_map.values())
+    # key_list = list(data_loader.index_map.keys())

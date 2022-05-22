@@ -213,24 +213,24 @@ class LinkPredictionLoader(Dataset):
 if __name__ == "__main__":
     data_path = Path(__file__).parent.parent / 'data'
 
-    # with open(data_path / 'index_mapping.pkl', 'rb') as f:
-    #     index_map = pickle.load(f)
-    # edge_array = np.load(str(data_path / 'connectivity_array.npy'))
+    with open(data_path / 'index_mapping.pkl', 'rb') as f:
+        index_map = pickle.load(f)
+    edge_array = np.load(str(data_path / 'connectivity_array.npy'))
 
-    # graph_t, graph_v, graph_test, index_map_t, index_map_v, index_map_test = split_graph(edge_array, index_map)
+    graph_t, graph_v, graph_test, index_map_t, index_map_v, index_map_test = split_graph(edge_array, index_map)
     # test = LinkPredictionLoader(data_path / "graph_edges_arrays/graph_train.npy",
     #                             data_path / "index_mappings/index_map_train.pkl",
     #                             data_path / 'sparse_adj_matrix.pkl', 100)
     # test.get_batch()
-    # np.save(data_path / "graph_edges_arrays/graph_train.npy", graph_t)
-    # np.save(data_path / "graph_edges_arrays/graph_val.npy", graph_v)
-    # np.save(data_path / "graph_edges_arrays/graph_test.npy", graph_test)
-    # with open(data_path / "index_mappings/index_map_train.pkl", "wb") as f:
-    #     pickle.dump(index_map_t, f)
-    # with open(data_path / "index_mappings/index_map_val.pkl", "wb") as f:
-    #     pickle.dump(index_map_v, f)
-    # with open(data_path / "index_mappings/index_map_test.pkl", "wb") as f:
-    #     pickle.dump(index_map_test, f)
+    np.save(data_path / "graph_edges_arrays/graph_train.npy", graph_t)
+    np.save(data_path / "graph_edges_arrays/graph_val.npy", graph_v)
+    np.save(data_path / "graph_edges_arrays/graph_test.npy", graph_test)
+    with open(data_path / "index_mappings/index_map_train.pkl", "wb") as f:
+        pickle.dump(index_map_t, f)
+    with open(data_path / "index_mappings/index_map_val.pkl", "wb") as f:
+        pickle.dump(index_map_v, f)
+    with open(data_path / "index_mappings/index_map_test.pkl", "wb") as f:
+        pickle.dump(index_map_test, f)
 
-    train_model(10)
+    # train_model(10)
 

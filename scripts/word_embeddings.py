@@ -21,6 +21,13 @@ nlp = spacy.load('en_core_web_sm', disable=['parser', 'tagger', 'ner'])
 raw_titles = df['clean_title'].to_list()
 raw_descs = df['clean_description'].to_list()
 
+with open('../data/index_mapping.pkl', 'rb') as f:
+    index_map = pickle.load(f)
+print(df['asin'].shape)
+print(len(index_map))
+# for key, value in index_map.items():
+#     if key not in df['asin']:
+#         print(key)
 # load pre-trained model
 model = api.load('word2vec-google-news-300')
 
@@ -39,8 +46,11 @@ max_desc_length = int(np.percentile(desc_lengths, 95))
 token_descs = [[token for i,token in enumerate(doc) if i < max_desc_length] for doc in token_descs]
 
 # add padding to titles and descriptions
-[doc.extend([0] * (max_title_length - len(doc))) for doc in token_titles if len(doc) < max_title_length]
-[doc.extend([0] * (max_desc_length- len(doc))) for doc in token_descs if len(doc) < max_desc_length]
+padded_title = [doc.extend([0] * (max_title_length - len(doc))) for doc in token_titles if len(doc) < max_title_length]
+padded_desc = [doc.extend([0] * (max_desc_length- len(doc))) for doc in token_descs if len(doc) < max_desc_length]
+
+df['padded_title_ids'] = token_titles
+df['padded_desc_ids'] = token_descs
 
 # get word2id and id2word
 word2id = model.key_to_index
@@ -74,19 +84,23 @@ embedding(i).numpy() == vector
 # tsSize = int(np.floor(0.10*num_docs))
 # vaSize = int(num_docs - trSize - tsSize)
 
+
 # shuffle
-df = df.sample(frac=1, random_state=2).reset_index(drop=True)
-df.drop(labels = ['clean_title', 'clean_description'], axis = 1, inplace = True)
+# df = df.sample(frac=1, random_state=2).reset_index(drop=True)
+# df.drop(labels = ['clean_title', 'clean_description'], axis = 1, inplace = True)
+
 
 # split
-train_set = df.sample(frac=0.8, random_state=22)
-test_set = df.drop(train_set.index)
+# train_set = df.sample(frac=0.8, random_state=22)
+# test_set = df.drop(train_set.index)
 
 # save data
-pickle.dump(train_set, open( "../data/train_set.p", "wb" ))
-pickle.dump(test_set, open( "../data/test_set.p", "wb" ))
-pickle.dump(word2id, open( "../data/word2id.p", "wb" ))
-pickle.dump(id2word, open( "../data/id2word.p", "wb" ))
+# pickle.dump(train_set, open( "../data/train_set.p", "wb" ))
+# pickle.dump(test_set, open( "../data/test_set.p", "wb" ))
+df_to_save = df[['asin', 'padded_title_ids', 'padded_desc_ids']]
+df_to_save.to_pickle('../data/padded_attr_df.pkl')
+# pickle.dump(word2id, open( "../data/word2id.pkl", "wb" ))
+# pickle.dump(id2word, open( "../data/id2word.pkl", "wb" ))
 
 
 
